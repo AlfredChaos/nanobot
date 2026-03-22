@@ -87,7 +87,8 @@ def _restore_terminal() -> None:
         return
     try:
         import termios
-        termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, _SAVED_TERM_ATTRS)
+        termios.tcsetattr(sys.stdin.fileno(),
+                          termios.TCSADRAIN, _SAVED_TERM_ATTRS)
     except Exception:
         pass
 
@@ -239,7 +240,6 @@ async def _read_interactive_input_async() -> str:
         raise KeyboardInterrupt from exc
 
 
-
 def version_callback(value: bool):
     if value:
         console.print(f"{__logo__} nanobot v{__version__}")
@@ -263,9 +263,12 @@ def main(
 
 @app.command()
 def onboard(
-    workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
-    config: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
-    wizard: bool = typer.Option(False, "--wizard", help="Use interactive wizard"),
+    workspace: str | None = typer.Option(
+        None, "--workspace", "-w", help="Workspace directory"),
+    config: str | None = typer.Option(
+        None, "--config", "-c", help="Path to config file"),
+    wizard: bool = typer.Option(
+        False, "--wizard", help="Use interactive wizard"),
 ):
     """Initialize nanobot configuration and workspace."""
     from nanobot.config.loader import get_config_path, load_config, save_config, set_config_path
@@ -288,17 +291,22 @@ def onboard(
         if wizard:
             config = _apply_workspace_override(load_config(config_path))
         else:
-            console.print(f"[yellow]Config already exists at {config_path}[/yellow]")
-            console.print("  [bold]y[/bold] = overwrite with defaults (existing values will be lost)")
-            console.print("  [bold]N[/bold] = refresh config, keeping existing values and adding new fields")
+            console.print(
+                f"[yellow]Config already exists at {config_path}[/yellow]")
+            console.print(
+                "  [bold]y[/bold] = overwrite with defaults (existing values will be lost)")
+            console.print(
+                "  [bold]N[/bold] = refresh config, keeping existing values and adding new fields")
             if typer.confirm("Overwrite?"):
                 config = _apply_workspace_override(Config())
                 save_config(config, config_path)
-                console.print(f"[green]✓[/green] Config reset to defaults at {config_path}")
+                console.print(
+                    f"[green]✓[/green] Config reset to defaults at {config_path}")
             else:
                 config = _apply_workspace_override(load_config(config_path))
                 save_config(config, config_path)
-                console.print(f"[green]✓[/green] Config refreshed at {config_path} (existing values preserved)")
+                console.print(
+                    f"[green]✓[/green] Config refreshed at {config_path} (existing values preserved)")
     else:
         config = _apply_workspace_override(Config())
         # In wizard mode, don't save yet - the wizard will handle saving if should_save=True
@@ -313,7 +321,8 @@ def onboard(
         try:
             result = run_onboard(initial_config=config)
             if not result.should_save:
-                console.print("[yellow]Configuration discarded. No changes were saved.[/yellow]")
+                console.print(
+                    "[yellow]Configuration discarded. No changes were saved.[/yellow]")
                 return
 
             config = result.config
@@ -321,7 +330,8 @@ def onboard(
             console.print(f"[green]✓[/green] Config saved at {config_path}")
         except Exception as e:
             console.print(f"[red]✗[/red] Error during configuration: {e}")
-            console.print("[yellow]Please run 'nanobot onboard' again to complete setup.[/yellow]")
+            console.print(
+                "[yellow]Please run 'nanobot onboard' again to complete setup.[/yellow]")
             raise typer.Exit(1)
     _onboard_plugins(config_path)
 
@@ -329,7 +339,8 @@ def onboard(
     workspace_path = get_workspace_path(config.workspace_path)
     if not workspace_path.exists():
         workspace_path.mkdir(parents=True, exist_ok=True)
-        console.print(f"[green]✓[/green] Created workspace at {workspace_path}")
+        console.print(
+            f"[green]✓[/green] Created workspace at {workspace_path}")
 
     sync_workspace_templates(workspace_path)
 
@@ -348,7 +359,8 @@ def onboard(
         console.print(f"  1. Add your API key to [cyan]{config_path}[/cyan]")
         console.print("     Get one at: https://openrouter.ai/keys")
         console.print(f"  2. Chat: [cyan]{agent_cmd}[/cyan]")
-    console.print("\n[dim]Want Telegram/WhatsApp? See: https://github.com/HKUDS/nanobot#-chat-apps[/dim]")
+    console.print(
+        "\n[dim]Want Telegram/WhatsApp? See: https://github.com/HKUDS/nanobot#-chat-apps[/dim]")
 
 
 def _merge_missing_defaults(existing: Any, defaults: Any) -> Any:
@@ -383,7 +395,8 @@ def _onboard_plugins(config_path: Path) -> None:
         if name not in channels:
             channels[name] = cls.default_config()
         else:
-            channels[name] = _merge_missing_defaults(channels[name], cls.default_config())
+            channels[name] = _merge_missing_defaults(
+                channels[name], cls.default_config())
 
     with open(config_path, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
@@ -399,9 +412,18 @@ def _make_provider(config: Config):
     provider_name = config.get_provider_name(model)
     p = config.get_provider(model)
 
-    # OpenAI Codex (OAuth)
-    if provider_name == "openai_codex" or model.startswith("openai-codex/"):
-        provider = OpenAICodexProvider(default_model=model)
+    # OpenAI Codex (OAuth) or OpenAI Responses (API key)
+    # Auto-detect if user is using openai provider but hitting a proxy that requires responses protocol
+    api_base = config.get_api_base(model)
+    is_responses_proxy = api_base and (
+        "aicode.cat" in api_base or "qaq.al" in api_base or "ggboom" in api_base)
+
+    if provider_name in ("openai_codex", "openai_responses") or model.startswith("openai-codex/") or (provider_name == "openai" and is_responses_proxy):
+        provider = OpenAICodexProvider(
+            api_key=p.api_key if p else None,
+            api_base=api_base,
+            default_model=model,
+        )
     # Custom: direct OpenAI-compatible endpoint, bypasses LiteLLM
     elif provider_name == "custom":
         from nanobot.providers.custom_provider import CustomProvider
@@ -414,9 +436,12 @@ def _make_provider(config: Config):
     # Azure OpenAI: direct Azure OpenAI endpoint with deployment name
     elif provider_name == "azure_openai":
         if not p or not p.api_key or not p.api_base:
-            console.print("[red]Error: Azure OpenAI requires api_key and api_base.[/red]")
-            console.print("Set them in ~/.nanobot/config.json under providers.azure_openai section")
-            console.print("Use the model field to specify the deployment name.")
+            console.print(
+                "[red]Error: Azure OpenAI requires api_key and api_base.[/red]")
+            console.print(
+                "Set them in ~/.nanobot/config.json under providers.azure_openai section")
+            console.print(
+                "Use the model field to specify the deployment name.")
             raise typer.Exit(1)
         provider = AzureOpenAIProvider(
             api_key=p.api_key,
@@ -429,7 +454,8 @@ def _make_provider(config: Config):
         spec = find_by_name(provider_name)
         if not model.startswith("bedrock/") and not (p and p.api_key) and not (spec and (spec.is_oauth or spec.is_local)):
             console.print("[red]Error: No API key configured.[/red]")
-            console.print("Set one in ~/.nanobot/config.json under providers section")
+            console.print(
+                "Set one in ~/.nanobot/config.json under providers section")
             raise typer.Exit(1)
         provider = LiteLLMProvider(
             api_key=p.api_key if p else None,
@@ -456,7 +482,8 @@ def _load_runtime_config(config: str | None = None, workspace: str | None = None
     if config:
         config_path = Path(config).expanduser().resolve()
         if not config_path.exists():
-            console.print(f"[red]Error: Config file not found: {config_path}[/red]")
+            console.print(
+                f"[red]Error: Config file not found: {config_path}[/red]")
             raise typer.Exit(1)
         set_config_path(config_path)
         console.print(f"[dim]Using config: {config_path}[/dim]")
@@ -485,7 +512,6 @@ def _warn_deprecated_config_keys(config_path: Path | None) -> None:
         )
 
 
-
 # ============================================================================
 # Gateway / Server
 # ============================================================================
@@ -494,9 +520,12 @@ def _warn_deprecated_config_keys(config_path: Path | None) -> None:
 @app.command()
 def gateway(
     port: int | None = typer.Option(None, "--port", "-p", help="Gateway port"),
-    workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
-    config: str | None = typer.Option(None, "--config", "-c", help="Path to config file"),
+    workspace: str | None = typer.Option(
+        None, "--workspace", "-w", help="Workspace directory"),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Verbose output"),
+    config: str | None = typer.Option(
+        None, "--config", "-c", help="Path to config file"),
 ):
     """Start the nanobot gateway."""
     from nanobot.agent.loop import AgentLoop
@@ -515,7 +544,8 @@ def gateway(
     config = _load_runtime_config(config, workspace)
     port = port if port is not None else config.gateway.port
 
-    console.print(f"{__logo__} Starting nanobot gateway version {__version__} on port {port}...")
+    console.print(
+        f"{__logo__} Starting nanobot gateway version {__version__} on port {port}...")
     sync_workspace_templates(config.workspace_path)
     bus = MessageBus()
     provider = _make_provider(config)
@@ -644,13 +674,15 @@ def gateway(
     )
 
     if channels.enabled_channels:
-        console.print(f"[green]✓[/green] Channels enabled: {', '.join(channels.enabled_channels)}")
+        console.print(
+            f"[green]✓[/green] Channels enabled: {', '.join(channels.enabled_channels)}")
     else:
         console.print("[yellow]Warning: No channels enabled[/yellow]")
 
     cron_status = cron.status()
     if cron_status["jobs"] > 0:
-        console.print(f"[green]✓[/green] Cron: {cron_status['jobs']} scheduled jobs")
+        console.print(
+            f"[green]✓[/green] Cron: {cron_status['jobs']} scheduled jobs")
 
     console.print(f"[green]✓[/green] Heartbeat: every {hb_cfg.interval_s}s")
 
@@ -678,8 +710,6 @@ def gateway(
     asyncio.run(run())
 
 
-
-
 # ============================================================================
 # Agent Commands
 # ============================================================================
@@ -687,12 +717,18 @@ def gateway(
 
 @app.command()
 def agent(
-    message: str = typer.Option(None, "--message", "-m", help="Message to send to the agent"),
-    session_id: str = typer.Option("cli:direct", "--session", "-s", help="Session ID"),
-    workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace directory"),
-    config: str | None = typer.Option(None, "--config", "-c", help="Config file path"),
-    markdown: bool = typer.Option(True, "--markdown/--no-markdown", help="Render assistant output as Markdown"),
-    logs: bool = typer.Option(False, "--logs/--no-logs", help="Show nanobot runtime logs during chat"),
+    message: str = typer.Option(
+        None, "--message", "-m", help="Message to send to the agent"),
+    session_id: str = typer.Option(
+        "cli:direct", "--session", "-s", help="Session ID"),
+    workspace: str | None = typer.Option(
+        None, "--workspace", "-w", help="Workspace directory"),
+    config: str | None = typer.Option(
+        None, "--config", "-c", help="Config file path"),
+    markdown: bool = typer.Option(
+        True, "--markdown/--no-markdown", help="Render assistant output as Markdown"),
+    logs: bool = typer.Option(
+        False, "--logs/--no-logs", help="Show nanobot runtime logs during chat"),
 ):
     """Interact with the agent directly."""
     from loguru import logger
@@ -760,7 +796,8 @@ def agent(
         # Interactive mode — route through bus like other channels
         from nanobot.bus.events import InboundMessage
         _init_prompt_session()
-        console.print(f"{__logo__} Interactive mode (type [bold]exit[/bold] or [bold]Ctrl+C[/bold] to quit)\n")
+        console.print(
+            f"{__logo__} Interactive mode (type [bold]exit[/bold] or [bold]Ctrl+C[/bold] to quit)\n")
 
         if ":" in session_id:
             cli_channel, cli_chat_id = session_id.split(":", 1)
@@ -794,7 +831,8 @@ def agent(
                     try:
                         msg = await asyncio.wait_for(bus.consume_outbound(), timeout=1.0)
                         if msg.metadata.get("_progress"):
-                            is_tool_hint = msg.metadata.get("_tool_hint", False)
+                            is_tool_hint = msg.metadata.get(
+                                "_tool_hint", False)
                             ch = agent_loop.channels_config
                             if ch and is_tool_hint and not ch.send_tool_hints:
                                 pass
@@ -848,7 +886,8 @@ def agent(
                         _thinking = None
 
                         if turn_response:
-                            _print_agent_response(turn_response[0], render_markdown=markdown)
+                            _print_agent_response(
+                                turn_response[0], render_markdown=markdown)
                     except KeyboardInterrupt:
                         _restore_terminal()
                         console.print("\nGoodbye!")
@@ -920,12 +959,15 @@ def _get_bridge_dir() -> Path:
     # Check for npm
     npm_path = shutil.which("npm")
     if not npm_path:
-        console.print("[red]npm not found. Please install Node.js >= 18.[/red]")
+        console.print(
+            "[red]npm not found. Please install Node.js >= 18.[/red]")
         raise typer.Exit(1)
 
     # Find source bridge: first check package data, then source dir
-    pkg_bridge = Path(__file__).parent.parent / "bridge"  # nanobot/bridge (installed)
-    src_bridge = Path(__file__).parent.parent.parent / "bridge"  # repo root/bridge (dev)
+    pkg_bridge = Path(__file__).parent.parent / \
+        "bridge"  # nanobot/bridge (installed)
+    src_bridge = Path(__file__).parent.parent.parent / \
+        "bridge"  # repo root/bridge (dev)
 
     source = None
     if (pkg_bridge / "package.json").exists():
@@ -935,7 +977,8 @@ def _get_bridge_dir() -> Path:
 
     if not source:
         console.print("[red]Bridge source not found.[/red]")
-        console.print("Try reinstalling: pip install --force-reinstall nanobot")
+        console.print(
+            "Try reinstalling: pip install --force-reinstall nanobot")
         raise typer.Exit(1)
 
     console.print(f"{__logo__} Setting up bridge...")
@@ -944,15 +987,18 @@ def _get_bridge_dir() -> Path:
     user_bridge.parent.mkdir(parents=True, exist_ok=True)
     if user_bridge.exists():
         shutil.rmtree(user_bridge)
-    shutil.copytree(source, user_bridge, ignore=shutil.ignore_patterns("node_modules", "dist"))
+    shutil.copytree(source, user_bridge,
+                    ignore=shutil.ignore_patterns("node_modules", "dist"))
 
     # Install and build
     try:
         console.print("  Installing dependencies...")
-        subprocess.run([npm_path, "install"], cwd=user_bridge, check=True, capture_output=True)
+        subprocess.run([npm_path, "install"], cwd=user_bridge,
+                       check=True, capture_output=True)
 
         console.print("  Building...")
-        subprocess.run([npm_path, "run", "build"], cwd=user_bridge, check=True, capture_output=True)
+        subprocess.run([npm_path, "run", "build"],
+                       cwd=user_bridge, check=True, capture_output=True)
 
         console.print("[green]✓[/green] Bridge ready\n")
     except subprocess.CalledProcessError as e:
@@ -981,7 +1027,8 @@ def channels_login():
 
     env = {**os.environ}
     wa_cfg = getattr(config.channels, "whatsapp", None) or {}
-    bridge_token = wa_cfg.get("bridgeToken", "") if isinstance(wa_cfg, dict) else getattr(wa_cfg, "bridge_token", "")
+    bridge_token = wa_cfg.get("bridgeToken", "") if isinstance(
+        wa_cfg, dict) else getattr(wa_cfg, "bridge_token", "")
     if bridge_token:
         env["BRIDGE_TOKEN"] = bridge_token
     env["AUTH_DIR"] = str(get_runtime_subdir("whatsapp-auth"))
@@ -992,7 +1039,8 @@ def channels_login():
         raise typer.Exit(1)
 
     try:
-        subprocess.run([npm_path, "start"], cwd=bridge_dir, check=True, env=env)
+        subprocess.run([npm_path, "start"],
+                       cwd=bridge_dir, check=True, env=env)
     except subprocess.CalledProcessError as e:
         console.print(f"[red]Bridge failed: {e}[/red]")
 
@@ -1055,8 +1103,10 @@ def status():
 
     console.print(f"{__logo__} nanobot Status\n")
 
-    console.print(f"Config: {config_path} {'[green]✓[/green]' if config_path.exists() else '[red]✗[/red]'}")
-    console.print(f"Workspace: {workspace} {'[green]✓[/green]' if workspace.exists() else '[red]✗[/red]'}")
+    console.print(
+        f"Config: {config_path} {'[green]✓[/green]' if config_path.exists() else '[red]✗[/red]'}")
+    console.print(
+        f"Workspace: {workspace} {'[green]✓[/green]' if workspace.exists() else '[red]✗[/red]'}")
 
     if config_path.exists():
         from nanobot.providers.registry import PROVIDERS
@@ -1073,12 +1123,14 @@ def status():
             elif spec.is_local:
                 # Local deployments show api_base instead of api_key
                 if p.api_base:
-                    console.print(f"{spec.label}: [green]✓ {p.api_base}[/green]")
+                    console.print(
+                        f"{spec.label}: [green]✓ {p.api_base}[/green]")
                 else:
                     console.print(f"{spec.label}: [dim]not set[/dim]")
             else:
                 has_key = bool(p.api_key)
-                console.print(f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}")
+                console.print(
+                    f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}")
 
 
 # ============================================================================
@@ -1101,7 +1153,8 @@ def _register_login(name: str):
 
 @provider_app.command("login")
 def provider_login(
-    provider: str = typer.Argument(..., help="OAuth provider (e.g. 'openai-codex', 'github-copilot')"),
+    provider: str = typer.Argument(
+        ..., help="OAuth provider (e.g. 'openai-codex', 'github-copilot')"),
 ):
     """Authenticate with an OAuth provider."""
     from nanobot.providers.registry import PROVIDERS
@@ -1109,8 +1162,10 @@ def provider_login(
     key = provider.replace("-", "_")
     spec = next((s for s in PROVIDERS if s.name == key and s.is_oauth), None)
     if not spec:
-        names = ", ".join(s.name.replace("_", "-") for s in PROVIDERS if s.is_oauth)
-        console.print(f"[red]Unknown OAuth provider: {provider}[/red]  Supported: {names}")
+        names = ", ".join(s.name.replace("_", "-")
+                          for s in PROVIDERS if s.is_oauth)
+        console.print(
+            f"[red]Unknown OAuth provider: {provider}[/red]  Supported: {names}")
         raise typer.Exit(1)
 
     handler = _LOGIN_HANDLERS.get(spec.name)
@@ -1140,9 +1195,11 @@ def _login_openai_codex() -> None:
         if not (token and token.access):
             console.print("[red]✗ Authentication failed[/red]")
             raise typer.Exit(1)
-        console.print(f"[green]✓ Authenticated with OpenAI Codex[/green]  [dim]{token.account_id}[/dim]")
+        console.print(
+            f"[green]✓ Authenticated with OpenAI Codex[/green]  [dim]{token.account_id}[/dim]")
     except ImportError:
-        console.print("[red]oauth_cli_kit not installed. Run: pip install oauth-cli-kit[/red]")
+        console.print(
+            "[red]oauth_cli_kit not installed. Run: pip install oauth-cli-kit[/red]")
         raise typer.Exit(1)
 
 

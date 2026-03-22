@@ -152,6 +152,42 @@ class QQChannel(BaseChannel):
         except Exception as e:
             logger.error("Error sending QQ message: {}", e)
 
+    async def _download_media(self, url: str) -> str | None:
+        """Download media from QQ URL to local temp file."""
+        try:
+            import httpx
+            import uuid
+            from nanobot.config.paths import get_media_dir
+
+            # QQ returns URL without scheme (e.g. "http://..." or "//...")
+            if url.startswith("//"):
+                url = "https:" + url
+            elif url.startswith("http://"):
+                url = url.replace("http://", "https://", 1)
+            elif url.startswith("/"):
+                url = "https://gchat.qpic.cn" + url
+
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+
+                content_type = resp.headers.get("content-type", "").lower()
+                ext = ".jpg"
+                if "png" in content_type:
+                    ext = ".png"
+                elif "gif" in content_type:
+                    ext = ".gif"
+                elif "webp" in content_type:
+                    ext = ".webp"
+
+                filename = f"qq_{uuid.uuid4().hex[:8]}{ext}"
+                save_path = get_media_dir() / filename
+                save_path.write_bytes(resp.content)
+                return str(save_path)
+        except Exception as e:
+            logger.error("Failed to download QQ media from {}: {}", url, e)
+            return None
+
     async def _on_message(self, data: "C2CMessage | GroupMessage", is_group: bool = False) -> None:
         """Handle incoming message from QQ."""
         try:
@@ -161,7 +197,23 @@ class QQChannel(BaseChannel):
             self._processed_ids.append(data.id)
 
             content = (data.content or "").strip()
-            if not content:
+
+            media_paths = []
+            if hasattr(data, "attachments") and data.attachments:
+                for att in data.attachments:
+                    url = getattr(att, "url", None)
+                    if url:
+                        local_path = await self._download_media(url)
+                        if local_path:
+                            media_paths.append(local_path)
+                            # Append a marker to content if it's empty
+                            marker = "[Image]"
+                            if not content:
+                                content = marker
+                            elif marker not in content:
+                                content += f"\n{marker}"
+
+            if not content and not media_paths:
                 return
 
             if is_group:
@@ -169,7 +221,8 @@ class QQChannel(BaseChannel):
                 user_id = data.author.member_openid
                 self._chat_type_cache[chat_id] = "group"
             else:
-                chat_id = str(getattr(data.author, 'id', None) or getattr(data.author, 'user_openid', 'unknown'))
+                chat_id = str(getattr(data.author, 'id', None) or getattr(
+                    data.author, 'user_openid', 'unknown'))
                 user_id = chat_id
                 self._chat_type_cache[chat_id] = "c2c"
 
@@ -177,6 +230,7 @@ class QQChannel(BaseChannel):
                 sender_id=user_id,
                 chat_id=chat_id,
                 content=content,
+                media=media_paths,
                 metadata={"message_id": data.id},
             )
         except Exception:

@@ -274,6 +274,24 @@ PROVIDERS: tuple[ProviderSpec, ...] = (
         model_overrides=(),
         is_oauth=True,  # OAuth-based authentication
     ),
+    # OpenAI Responses: uses API key with Codex Responses protocol.
+    ProviderSpec(
+        name="openai_responses",
+        keywords=("openai-responses",),
+        env_key="OPENAI_API_KEY",
+        display_name="OpenAI Responses",
+        litellm_prefix="",
+        skip_prefixes=(),
+        env_extras=(),
+        is_gateway=False,
+        is_local=False,
+        detect_by_key_prefix="",
+        detect_by_base_keyword="",
+        default_api_base="",
+        strip_model_prefix=False,
+        model_overrides=(),
+        is_direct=True,  # Bypasses LiteLLM
+    ),
     # Github Copilot: uses OAuth, not API key.
     ProviderSpec(
         name="github_copilot",

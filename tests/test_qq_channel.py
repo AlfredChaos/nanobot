@@ -123,3 +123,37 @@ async def test_send_group_message_uses_markdown_when_configured() -> None:
         "msg_id": "msg1",
         "msg_seq": 2,
     }
+
+
+@pytest.mark.asyncio
+async def test_on_message_with_image_attachment(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr("nanobot.config.paths.get_media_dir", lambda: tmp_path)
+
+    channel = QQChannel(QQConfig(app_id="app", secret="secret", allow_from=["user1"]), MessageBus())
+
+    async def mock_download(url: str) -> str:
+        p = tmp_path / "mock_image.jpg"
+        p.write_bytes(b"fake_image_data")
+        return str(p)
+
+    channel._download_media = mock_download  # type: ignore[method-assign]
+
+    data = SimpleNamespace(
+        id="msg_img_1",
+        content="",
+        group_openid="group123",
+        author=SimpleNamespace(member_openid="user1"),
+        attachments=[
+            SimpleNamespace(url="http://example.com/image.jpg", content_type="image/jpeg")
+        ]
+    )
+
+    await channel._on_message(data, is_group=True)
+
+    msg = await channel.bus.consume_inbound()
+    assert msg.sender_id == "user1"
+    assert msg.chat_id == "group123"
+    assert msg.content == "[Image]"
+    assert len(msg.media) == 1
+    assert "mock_image.jpg" in msg.media[0]
+
