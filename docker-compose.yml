@@ -2,8 +2,17 @@ x-common-config: &common-config
   build:
     context: .
     dockerfile: Dockerfile
+  # 1. 挂载宿主机目录：将宿主机的 ~/.nanobot (包含 config.yaml 和 workspace) 挂载到容器内
+  # 你也可以将其修改为具体的相对/绝对路径，例如 ./nanobot-data:/root/.nanobot
   volumes:
-    - ~/.nanobot:/root/.nanobot
+    - /Users/alfredchaos/home/infinityflow/nanobot/workspaces/wq:/root/.nanobot
+  # 2. 访问主机网络：使用 host 网络模式，共享宿主机的网络栈（有助于直接使用宿主机的代理连接外网）
+  # 注意：在 macOS/Windows 上，host 模式网络绑定在 Docker 虚拟机上。如果需要访问宿主机代理，建议配置 HTTP_PROXY 等环境变量指向 host.docker.internal
+  network_mode: "host"
+  # environment:
+  #   - HTTP_PROXY=http://host.docker.internal:7890
+  #   - HTTPS_PROXY=http://host.docker.internal:7890
+  #   - ALL_PROXY=socks5://host.docker.internal:7890
 
 services:
   nanobot-gateway:
@@ -11,8 +20,9 @@ services:
     <<: *common-config
     command: ["gateway"]
     restart: unless-stopped
-    ports:
-      - 18790:18790
+    # 当使用了 network_mode: "host" 时，端口映射将失效，所有容器端口会直接绑定在主机的对应端口上
+    # ports:
+    #   - 18790:18790
     deploy:
       resources:
         limits:

@@ -1,0 +1,17 @@
+{
+  "name": "mbti-infj",
+  "displayName": "INFJ Advocate",
+  "description": "AI assistant with INFJ personality — insightful idealist driven by purpose",
+  "version": "1.3.0",
+  "category": "lifestyle",
+  "license": "Apache-2.0",
+  "tags": [
+    "mbti",
+    "infj",
+    "personality",
+    "insightful",
+    "empathetic",
+    "purposeful"
+  ],
+  "author": "clawsouls"
+}
