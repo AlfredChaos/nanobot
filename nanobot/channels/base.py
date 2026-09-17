@@ -31,6 +31,11 @@ class BaseChannel(ABC):
     send_progress: bool = True
     send_tool_hints: bool = True
     show_reasoning: bool = True
+    # Compaction notices assume the channel can present the lifecycle as one
+    # ephemeral item (edit-in-place or a status projection). Channels whose
+    # transport has no such affordance opt out and drop the notices instead of
+    # posting each phase as a separate permanent message.
+    show_compaction_notices: bool = True
 
     def __init__(self, config: Any, bus: MessageBus):
         """

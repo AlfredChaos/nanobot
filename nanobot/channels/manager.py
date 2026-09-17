@@ -15,6 +15,7 @@ from loguru import logger
 
 from nanobot.bus.events import OutboundMessage
 from nanobot.bus.outbound_events import (
+    ContextCompactionEvent,
     ProgressEvent,
     RetryWaitEvent,
     RuntimeModelUpdatedEvent,
@@ -68,6 +69,7 @@ _BOOL_CAMEL_ALIASES: dict[str, str] = {
     "send_progress": "sendProgress",
     "send_tool_hints": "sendToolHints",
     "show_reasoning": "showReasoning",
+    "show_compaction_notices": "showCompactionNotices",
 }
 
 def _default_channel_config(name: str) -> dict[str, Any] | None:
@@ -228,6 +230,9 @@ class ChannelManager:
         )
         channel.show_reasoning = self._resolve_bool_override(
             section, "show_reasoning", self.config.channels.show_reasoning,
+        )
+        channel.show_compaction_notices = self._resolve_bool_override(
+            section, "show_compaction_notices", channel.show_compaction_notices,
         )
         return channel
 
@@ -812,6 +817,16 @@ class ChannelManager:
 
                 if isinstance(event, RetryWaitEvent):
                     continue
+
+                if isinstance(event, ContextCompactionEvent):
+                    # The lifecycle is only meaningful where the channel can
+                    # present it as one ephemeral item (Telegram/Discord edit
+                    # the notice in place, WebSocket projects it as status).
+                    # Channels without such an affordance (QQ) post each phase
+                    # as a separate permanent message, so they opt out here.
+                    compaction_channel = self.channels.get(msg.channel)
+                    if compaction_channel is None or not compaction_channel.show_compaction_notices:
+                        continue
 
                 if (
                     isinstance(event, RuntimeModelUpdatedEvent)

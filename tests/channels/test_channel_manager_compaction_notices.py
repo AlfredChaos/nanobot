@@ -4,7 +4,9 @@ Compaction changes the context of every later turn, so both the start and
 the outcome of a compaction are information for the user, not progress
 chatter: a channel with ``send_progress`` off still receives them. Reducing
 the noise (one message updated in place) is the adapter's job; see the
-Discord channel (#5719).
+Discord channel (#5719). Channels whose transport cannot update a message
+in place (QQ: no edit/recall endpoint for C2C/group) set
+``show_compaction_notices = False`` and drop the notices instead (#5784).
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from nanobot.bus.events import OutboundMessage
 from nanobot.bus.outbound_events import (
     ContextCompactionEvent,
     ProgressEvent,
@@ -87,3 +90,42 @@ async def test_compaction_lifecycle_is_delivered_with_progress_off(manager: Chan
     contents = _sent_contents(manager)
     assert "ordinary progress" not in contents
     assert len(contents) == 2
+
+
+@pytest.mark.asyncio
+async def test_compaction_notices_dropped_when_capability_off(manager: ChannelManager) -> None:
+    manager.channels["mock"].show_compaction_notices = False
+    await manager.bus.publish_outbound(
+        OutboundMessage(channel="mock", chat_id="chat", content="ordinary reply")
+    )
+    for phase in ("started", "succeeded"):
+        await manager.bus.publish_outbound(
+            outbound_message_for_event(
+                channel="mock",
+                chat_id="chat",
+                event=ContextCompactionEvent(compaction_id="c1", phase=phase),
+            )
+        )
+
+    await _dispatch_until(manager, 1)
+
+    contents = _sent_contents(manager)
+    assert contents == ["ordinary reply"]
+
+
+def test_qq_channel_opts_out_of_compaction_notices() -> None:
+    from nanobot.channels.qq.runtime import QQChannel
+
+    assert QQChannel.show_compaction_notices is False
+
+
+def test_compaction_notice_capability_is_config_overridable(manager: ChannelManager) -> None:
+    assert manager._resolve_bool_override(
+        {"showCompactionNotices": True}, "show_compaction_notices", default=False,
+    )
+    assert not manager._resolve_bool_override(
+        {"sendProgress": True}, "show_compaction_notices", default=False,
+    )
+    assert manager._resolve_bool_override(
+        {}, "show_compaction_notices", default=True,
+    )

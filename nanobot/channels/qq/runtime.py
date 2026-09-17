@@ -198,6 +198,9 @@ class QQChannel(BaseChannel):
 
     name = "qq"
     display_name = "QQ"
+    # QQ's C2C/group message API has no edit or recall endpoint, so compaction
+    # notices would land as separate permanent messages (#5784).
+    show_compaction_notices = False
 
     @classmethod
     def default_config(cls) -> dict[str, Any]:
