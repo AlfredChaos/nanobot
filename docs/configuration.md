@@ -1654,7 +1654,7 @@ Normal tool workspace and media access rules still apply to attachment paths.
 }
 ```
 
-`showCompactionNotices` follows the same per-channel override mechanism. It controls the context-compaction lifecycle notices ("Compressing context…" / "Context compacted."). The default is `true`; channels whose transport cannot present the notice as a single in-place-updated item default to `false` and drop the notices instead — currently QQ, whose C2C/group message API has no edit or recall endpoint (#5784). Telegram, Discord and WebSocket render the lifecycle as one edited message/status and are unaffected. To restore the notices on QQ:
+QQ `showCompactionNotices` defaults to `false`. It controls the context-compaction lifecycle notices ("Compressing context…" / "Context compacted."). Telegram, Discord and WebSocket present that lifecycle as one in-place-updated message or status, but QQ's C2C/group message API has no edit or recall endpoint, so each phase would land as a separate permanent message; the QQ channel therefore drops the notices by default (#5784). Set `channels.qq.showCompactionNotices: true` to post them anyway:
 
 ```json
 {
